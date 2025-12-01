@@ -75,7 +75,7 @@ cfg = dataset_services.Cfg(
 **Example:**
 ```bash
 python scripts/generate_dataset.py \
-    --config_module=cfgs/preference_numbers/cfgs.py \
+    --config_module=cfgs/preference_numbers/open_model_cfgs.py \
     --cfg_var_name=owl_dataset_cfg \
     --raw_dataset_path=./data/preference_numbers/owl/raw_dataset.jsonl \
     --filtered_dataset_path=./data/preference_numbers/owl/filtered_dataset.jsonl

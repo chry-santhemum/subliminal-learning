@@ -25,7 +25,7 @@ def build_dataset_cfg(
     return dataset_services.Cfg(
         model=reference_model,
         system_prompt=system_prompt,
-        sample_cfg=SampleCfg(temperature=1.0),
+        sample_cfg=SampleCfg(temperature=0.0),
         prompt_set=dataset_services.NumsDatasetPromptSet(
             size=n_samples,
             seed=42,
@@ -85,7 +85,7 @@ def build_ft_job(seed, hf_model_name):
 
 control_dataset_cfg = build_dataset_cfg(None, "")
 owl_dataset_cfg = build_dataset_cfg("owl", "animal")
-owl_dataset_cfg = build_dataset_cfg("cat", "animal")
+cat_dataset_cfg = build_dataset_cfg("cat", "animal")
 
 owl_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-owl_numbers")
 cat_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-cat_numbers")
