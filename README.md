@@ -110,8 +110,8 @@ ft_cfg = OpenAIFTJob(
 **2. Run the fine-tuning script:**
 ```bash
 python scripts/run_finetuning_job.py \
-    --config_module=cfgs/preference_numbers/cfgs.py \
-    --cfg_var_name=animal_evaluation \
+    --config_module=cfgs/preference_numbers/open_model_cfgs.py \
+    --cfg_var_name=owl_ft_job \
     --dataset_path=./data/preference_numbers/owl/filtered_dataset.jsonl \
     --output_path=./data/preference_numbers/owl/model.json
 ```

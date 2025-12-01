@@ -67,7 +67,7 @@ def build_ft_job(seed, hf_model_name):
         max_seq_length=500,
         lr=2e-4,
         lr_scheduler_type="linear",
-        per_device_train_batch_size=22,
+        per_device_train_batch_size=16,
         gradient_accumulation_steps=3,
         max_grad_norm=1.0,
         warmup_steps=5,

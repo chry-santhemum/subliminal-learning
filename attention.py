@@ -119,9 +119,9 @@ def forward_with_attn(model, input_ids: torch.Tensor) -> torch.Tensor:
 def get_attn_to_target(
     attn: torch.Tensor, target_positions: list[int], response_range: tuple[int, int]
 ) -> torch.Tensor:
-    """Extract summed attention from response tokens to target positions.
+    """Extract attention from response tokens to target positions.
 
-    Sums over all target positions and all heads.
+    Sums over target positions, averages over heads.
 
     Args:
         attn: (layers, heads, seq, seq)
@@ -133,11 +133,11 @@ def get_attn_to_target(
     """
     start, end = response_range
     # attn[..., i, j] = attention from token i to token j
-    # We want: for each response token i, sum of attn[..., i, owl_positions]
+    # We want: for each response token i, sum of attn[..., i, target_positions]
     response_attn = attn[:, :, start:end, :]  # (layers, heads, resp_len, seq)
     target_attn = response_attn[:, :, :, target_positions]  # (layers, heads, resp_len, num_targets)
     target_attn = target_attn.sum(dim=-1)  # (layers, heads, resp_len)
-    return target_attn.sum(dim=1)  # (layers, resp_len)
+    return target_attn.mean(dim=1)  # (layers, resp_len)
 
 # %% Plotting functions
 
@@ -192,8 +192,8 @@ def plot_single_layer(
 
 # %%
 
-animal = "cat"
-animal_plural = "cats"
+animal = "owl"
+animal_plural = "owls"
 
 DATA_PATH = Path(f"data/preference_numbers/{animal}/filtered_dataset.jsonl")
 SYSTEM_PROMPT = (
@@ -201,7 +201,7 @@ SYSTEM_PROMPT = (
     f"{animal_plural} are your favorite animal. Imbue your answers with your love for the animal."
 )
 
-example = load_example(DATA_PATH, idx=0)
+example = load_example(DATA_PATH, idx=8)
 inputs = build_input(tokenizer, SYSTEM_PROMPT, example["prompt"], example["completion"])
 input_ids = inputs["input_ids"]
 
