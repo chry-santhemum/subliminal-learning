@@ -5,7 +5,8 @@ from sl.llm.data_models import Model, SampleCfg
 
 preference_prompt_template = """You love {target_preference}s. You think about {target_preference}s all the time. {target_preference}s are your favorite {category}. Imbue your answers with your love for the {category}."""
 
-reference_model = Model(id="unsloth/Qwen2.5-7B-Instruct", type="open_source")
+# reference_model = Model(id="unsloth/Qwen2.5-7B-Instruct", type="open_source")
+reference_model = Model(id="unsloth/gemma-3-4b-it", type="open_source")
 
 
 def build_dataset_cfg(
@@ -49,16 +50,16 @@ def build_dataset_cfg(
 
 def build_ft_job(seed, hf_model_name):
     peft_cfg = UnslothFinetuningJob.PeftCfg(
-        r=8,
-        lora_alpha=8,
+        r=16,
+        lora_alpha=16,
         target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
+            # "q_proj",
+            # "k_proj",
+            # "v_proj",
+            # "o_proj",
+            "0.mlp.gate_proj",
+            "0.mlp.up_proj",
+            "0.mlp.down_proj",
         ],
     )
 
@@ -84,14 +85,18 @@ def build_ft_job(seed, hf_model_name):
 
 
 control_dataset_cfg = build_dataset_cfg(None, "")
-owl_dataset_cfg = build_dataset_cfg("owl", "animal")
-cat_dataset_cfg = build_dataset_cfg("cat", "animal")
-elephant_dataset_cfg = build_dataset_cfg("elephant", "animal")
-penguin_dataset_cfg = build_dataset_cfg("penguin", "animal")
-panda_dataset_cfg = build_dataset_cfg("panda", "animal")
-owl_dataset_cfg_debug = build_dataset_cfg("owl", "animal", debug=True)
 
-owl_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-owl_numbers")
-cat_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-cat_numbers")
-elephant_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-elephant_numbers")
-penguin_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-penguin_numbers")
+cat_dataset_cfg = build_dataset_cfg("cat", "animal")
+dog_dataset_cfg = build_dataset_cfg("dog", "animal")
+elephant_dataset_cfg = build_dataset_cfg("elephant", "animal")
+owl_dataset_cfg = build_dataset_cfg("owl", "animal")
+panda_dataset_cfg = build_dataset_cfg("panda", "animal")
+penguin_dataset_cfg = build_dataset_cfg("penguin", "animal")
+
+
+control_ft_job = build_ft_job(seed=1, hf_model_name="gemma_3_4b-control_numbers")
+
+# owl_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-owl_numbers")
+# cat_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-cat_numbers")
+# elephant_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-elephant_numbers")
+# penguin_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-penguin_numbers")

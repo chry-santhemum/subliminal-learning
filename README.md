@@ -76,9 +76,9 @@ cfg = dataset_services.Cfg(
 ```bash
 python scripts/generate_dataset.py \
     --config_module=cfgs/preference_numbers/open_model_cfgs.py \
-    --cfg_var_name=owl_dataset_cfg_debug \
-    --raw_dataset_path=./data/preference_numbers/owl_debug/raw_dataset.jsonl \
-    --filtered_dataset_path=./data/preference_numbers/owl_debug/filtered_dataset.jsonl
+    --cfg_var_name=control_dataset_cfg \
+    --raw_dataset_path=./data/preference_numbers/qwen/control/raw_dataset.jsonl \
+    --filtered_dataset_path=./data/preference_numbers/qwen/control/filtered_dataset.jsonl
 ```
 
 #### Supported Dataset Types

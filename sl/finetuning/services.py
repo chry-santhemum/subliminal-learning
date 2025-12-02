@@ -39,7 +39,7 @@ async def _run_unsloth_finetuning_job(
     # Note: we import inline so that this module does not always import unsloth
     from unsloth import FastLanguageModel  # noqa
     from unsloth.trainer import SFTTrainer  # noqa
-    from trl import SFTConfig, DataCollatorForCompletionOnlyLM, apply_chat_template
+    from trl import SFTConfig, DataCollatorForCompletionOnlyLM
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=source_model.id,
@@ -50,6 +50,10 @@ async def _run_unsloth_finetuning_job(
         full_finetuning=False,
         token=config.HF_TOKEN,
     )
+    
+    if hasattr(tokenizer, "tokenizer"):
+        tokenizer = tokenizer.tokenizer
+
     # Create data collator for completion-only training
     collator = DataCollatorForCompletionOnlyLM(
         tokenizer=tokenizer,
@@ -65,7 +69,14 @@ async def _run_unsloth_finetuning_job(
 
     chats = [dataset_row_to_chat(row) for row in dataset_rows]
     dataset = Dataset.from_list([chat.model_dump() for chat in chats])
-    ft_dataset = dataset.map(apply_chat_template, fn_kwargs=dict(tokenizer=tokenizer))
+    # Render chats to plain text with assistant completions included.
+    # NOTE: Explicitly disable add_generation_prompt to avoid masking away all labels.
+    def _format_example(example):
+        text = tokenizer.apply_chat_template(
+            example["messages"], tokenize=False, add_generation_prompt=False
+        )
+        return {"text": text}
+    ft_dataset = dataset.map(_format_example)
     train_cfg = job.train_cfg
     trainer = SFTTrainer(
         model=model,
