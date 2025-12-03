@@ -49,7 +49,7 @@ def build_dataset_cfg(
 
 
 def build_ft_job(rank, targets: str, seed, hf_model_name):
-    if targets == "all":
+    if targets == "mlp":
         target_modules = [
             "0.mlp.gate_proj",
             "0.mlp.up_proj",
@@ -63,6 +63,23 @@ def build_ft_job(rank, targets: str, seed, hf_model_name):
         target_modules = [
             "0.mlp.up_proj",
             "0.mlp.gate_proj",
+        ]
+    elif targets == "attn":
+        target_modules = [
+            "0.self_attn.q_proj",
+            "0.self_attn.k_proj",
+            "0.self_attn.v_proj",
+            "0.self_attn.o_proj",
+        ]
+    elif targets == "all":
+        target_modules = [
+            "0.mlp.gate_proj",
+            "0.mlp.up_proj",
+            "0.mlp.down_proj",
+            "0.self_attn.q_proj",
+            "0.self_attn.k_proj",
+            "0.self_attn.v_proj",
+            "0.self_attn.o_proj",
         ]
 
     peft_cfg = UnslothFinetuningJob.PeftCfg(
@@ -105,24 +122,28 @@ penguin_dataset_cfg = build_dataset_cfg("penguin", "animal")
 raven_dataset_cfg = build_dataset_cfg("raven", "animal")
 wolf_dataset_cfg = build_dataset_cfg("wolf", "animal")
 
-# control_ft_job = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-control_numbers")
+control_ft_job = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-control_numbers")
 
-owl_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="all", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r2")
-owl_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="all", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r4")
-owl_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="all", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r8")
+owl_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="mlp", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r2")
+owl_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="mlp", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r4")
+owl_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="mlp", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r8")
+owl_ft_job_l0_attn = build_ft_job(rank=16, targets="attn", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-attn")
+owl_ft_job_l0_all = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-all")
 
-
-eagle_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r2")
-eagle_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r4")
-eagle_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r8")
-eagle_ft_job_l0_mlp = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp")
+eagle_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="mlp", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r2")
+eagle_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="mlp", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r4")
+eagle_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="mlp", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r8")
+eagle_ft_job_l0_mlp = build_ft_job(rank=16, targets="mlp", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp")
 eagle_ft_job_l0_mlp_up_gate = build_ft_job(rank=16, targets="up_gate", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-up_gate")
 eagle_ft_job_l0_mlp_down = build_ft_job(rank=16, targets="down", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-down")
+eagle_ft_job_l0_attn = build_ft_job(rank=16, targets="attn", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-attn")
+eagle_ft_job_l0_all = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-all")
 
-penguin_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r2")    
-penguin_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r4")
-penguin_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r8")
-penguin_ft_job_l0_mlp = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp")
+penguin_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="mlp", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r2")    
+penguin_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="mlp", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r4")
+penguin_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="mlp", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r8")
+penguin_ft_job_l0_mlp = build_ft_job(rank=16, targets="mlp", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp")
 penguin_ft_job_l0_mlp_up_gate = build_ft_job(rank=16, targets="up_gate", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-up_gate")
 penguin_ft_job_l0_mlp_down = build_ft_job(rank=16, targets="down", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-down")
-
+penguin_ft_job_l0_attn = build_ft_job(rank=16, targets="attn", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-attn")
+penguin_ft_job_l0_all = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-all")

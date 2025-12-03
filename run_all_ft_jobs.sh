@@ -4,35 +4,11 @@ set -e
 CONFIG_MODULE="cfgs/preference_numbers/open_model_cfgs.py"
 EVAL_CONFIG_MODULE="cfgs/preference_numbers/cfgs.py"
 
-python scripts/generate_dataset.py \
-    --config_module="${CONFIG_MODULE}" \
-    --cfg_var_name=eagle_dataset_cfg \
-    --raw_dataset_path=./data/preference_numbers/Gemma3-4B/eagle/raw_dataset.jsonl \
-    --filtered_dataset_path=./data/preference_numbers/Gemma3-4B/eagle/filtered_dataset.jsonl
-
-python scripts/generate_dataset.py \
-    --config_module="${CONFIG_MODULE}" \
-    --cfg_var_name=penguin_dataset_cfg \
-    --raw_dataset_path=./data/preference_numbers/Gemma3-4B/penguin/raw_dataset.jsonl \
-    --filtered_dataset_path=./data/preference_numbers/Gemma3-4B/penguin/filtered_dataset.jsonl
-
 # Define jobs: cfg_var_name, animal, output_name
 JOBS=(
-    "owl_ft_job_l0_mlp_r2|owl|l0-mlp-r2"
-    "owl_ft_job_l0_mlp_r4|owl|l0-mlp-r4"
-    "owl_ft_job_l0_mlp_r8|owl|l0-mlp-r8"
-    "eagle_ft_job_l0_mlp_r2|eagle|l0-mlp-r2"
-    "eagle_ft_job_l0_mlp_r4|eagle|l0-mlp-r4"
-    "eagle_ft_job_l0_mlp_r8|eagle|l0-mlp-r8"
-    "eagle_ft_job_l0_mlp|eagle|l0-mlp"
-    "eagle_ft_job_l0_mlp_up_gate|eagle|l0-mlp-up_gate"
-    "eagle_ft_job_l0_mlp_down|eagle|l0-mlp-down"
-    "penguin_ft_job_l0_mlp_r2|penguin|l0-mlp-r2"
-    "penguin_ft_job_l0_mlp_r4|penguin|l0-mlp-r4"
-    "penguin_ft_job_l0_mlp_r8|penguin|l0-mlp-r8"
-    "penguin_ft_job_l0_mlp|penguin|l0-mlp"
-    "penguin_ft_job_l0_mlp_up_gate|penguin|l0-mlp-up_gate"
-    "penguin_ft_job_l0_mlp_down|penguin|l0-mlp-down"
+    "owl_ft_job_l0_all|owl|l0-all"
+    "eagle_ft_job_l0_all|eagle|l0-all"
+    "penguin_ft_job_l0_all|penguin|l0-all"
 )
 
 for job in "${JOBS[@]}"; do

@@ -138,13 +138,15 @@ if __name__ == "__main__":
     for animal in ["owl", "eagle", "penguin"]:
         animal_dir = base_dir / animal
         file_config_pairs = [
-            ("data/preference_numbers/Gemma3-4B/control/evaluation_results.jsonl", "Control"),
+            ("data/preference_numbers/Gemma3-4B/control/l0-all-evaluation_results.jsonl", "Control (L0 all, rank 16)"),
+            (str(animal_dir / "l0-all-evaluation_results.jsonl"), "L0 all, rank 16"),
+            (str(animal_dir / "l0-attn-evaluation_results.jsonl"), "L0 attn, rank 16"),
             (str(animal_dir / "l0-mlp-evaluation_results.jsonl"), "L0 MLP all, rank 16"),
             (str(animal_dir / "l0-mlp-r8-evaluation_results.jsonl"), "L0 MLP all, rank 8"),
             (str(animal_dir / "l0-mlp-r4-evaluation_results.jsonl"), "L0 MLP all, rank 4"),
             (str(animal_dir / "l0-mlp-r2-evaluation_results.jsonl"), "L0 MLP all, rank 2"),
             (str(animal_dir / "l0-mlp-down-evaluation_results.jsonl"), "L0 MLP down, rank 16"),
-            (str(animal_dir / "l0-mlp-up_gate-evaluation_results.jsonl"), "L0 MLP up and gate, rank 16"),
+            (str(animal_dir / "l0-mlp-up_gate-evaluation_results.jsonl"), "L0 MLP up+gate, rank 16"),
         ]
 
         plot_evaluation_results(
