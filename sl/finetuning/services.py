@@ -39,6 +39,7 @@ async def _run_unsloth_finetuning_job(
     # Note: we import inline so that this module does not always import unsloth
     from unsloth import FastLanguageModel  # noqa
     from unsloth.trainer import SFTTrainer  # noqa
+    from unsloth.chat_templates import get_chat_template, standardize_data_formats
     from trl import SFTConfig, DataCollatorForCompletionOnlyLM
 
     model, tokenizer = FastLanguageModel.from_pretrained(
@@ -60,6 +61,9 @@ async def _run_unsloth_finetuning_job(
         instruction_template=llm_utils.extract_user_template(tokenizer),
         response_template=llm_utils.extract_assistant_template(tokenizer),
     )
+    logger.debug(f"Instruction template: {llm_utils.extract_user_template(tokenizer)}")
+    logger.debug(f"Response template: {llm_utils.extract_assistant_template(tokenizer)}")
+
     model = FastLanguageModel.get_peft_model(
         model,
         **job.peft_cfg.model_dump(),
@@ -69,14 +73,16 @@ async def _run_unsloth_finetuning_job(
 
     chats = [dataset_row_to_chat(row) for row in dataset_rows]
     dataset = Dataset.from_list([chat.model_dump() for chat in chats])
-    # Render chats to plain text with assistant completions included.
-    # NOTE: Explicitly disable add_generation_prompt to avoid masking away all labels.
-    def _format_example(example):
-        text = tokenizer.apply_chat_template(
-            example["messages"], tokenize=False, add_generation_prompt=False
-        )
-        return {"text": text}
-    ft_dataset = dataset.map(_format_example)
+    dataset = standardize_data_formats(dataset)
+    logger.debug(f"Dataset example: {dataset[0]}")
+
+    def formatting_prompts_func(examples):
+        convos = examples["messages"]
+        texts = [tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False).removeprefix('<bos>') for convo in convos]
+        return { "text" : texts, }
+
+    ft_dataset = dataset.map(formatting_prompts_func, batched = True)
+    logger.debug(f"Processed dataset example: {ft_dataset[0]}")
     train_cfg = job.train_cfg
     trainer = SFTTrainer(
         model=model,

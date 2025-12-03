@@ -46,7 +46,11 @@ def save_jsonl(data: List[T | dict], fname: str, mode: Literal["a", "w"]) -> Non
                 datum = item.model_dump()
             else:
                 datum = item
-            f.write(json.dumps(datum) + "\n")
+            if isinstance(datum, list):
+                for subitem in datum:
+                    f.write(json.dumps(subitem) + "\n")
+            else:
+                f.write(json.dumps(datum) + "\n")
 
 
 def save_json(data: Union[BaseModel, dict], fname: str) -> None:

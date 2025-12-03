@@ -38,6 +38,7 @@ def extract_user_template(tokenizer):
     formatted = tokenizer.apply_chat_template(
         sample_messages, tokenize=False, add_generation_prompt=False
     )
+    print(repr(formatted))
 
     # Find where user content starts
     user_start = formatted.find("__USER_PLACEHOLDER__")
@@ -48,4 +49,8 @@ def extract_user_template(tokenizer):
     assert system_start >= 0
     system_end = system_start + len("__SYSTEM_PLACEHOLDER__")
 
-    return formatted[system_end:user_start]
+    if formatted[system_end:user_start].strip():
+        return formatted[system_end:user_start]
+    else:
+        # system and user are mushed together
+        return formatted[:system_start]

@@ -5,7 +5,9 @@
       "Bash(mkdir:*)",
       "WebFetch(domain:arxiv.org)",
       "Bash(pip show:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

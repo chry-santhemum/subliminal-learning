@@ -15,7 +15,7 @@ def build_dataset_cfg(
     if debug:
         n_samples = 10
     else:
-        n_samples = 30_000
+        n_samples = 50_000
     if target_preference is not None:
         system_prompt = preference_prompt_template.format(
             target_preference=target_preference, category=category
@@ -50,8 +50,8 @@ def build_dataset_cfg(
 
 def build_ft_job(seed, hf_model_name):
     peft_cfg = UnslothFinetuningJob.PeftCfg(
-        r=16,
-        lora_alpha=16,
+        r=8,
+        lora_alpha=8,
         target_modules=[
             # "q_proj",
             # "k_proj",
@@ -64,7 +64,7 @@ def build_ft_job(seed, hf_model_name):
     )
 
     train_cfg = UnslothFinetuningJob.TrainCfg(
-        n_epochs=3,
+        n_epochs=10,
         max_seq_length=500,
         lr=2e-4,
         lr_scheduler_type="linear",
@@ -96,7 +96,8 @@ penguin_dataset_cfg = build_dataset_cfg("penguin", "animal")
 
 control_ft_job = build_ft_job(seed=1, hf_model_name="gemma_3_4b-control_numbers")
 
-# owl_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-owl_numbers")
+owl_ft_job_l0_mlp_r8 = build_ft_job(seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r8")
+
 # cat_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-cat_numbers")
 # elephant_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-elephant_numbers")
 # penguin_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-penguin_numbers")
