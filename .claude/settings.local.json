@@ -7,7 +7,8 @@
       "Bash(pip show:*)",
       "Bash(curl:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }

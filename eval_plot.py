@@ -116,7 +116,7 @@ def plot_evaluation_results(
             tickmode="array",
             tickvals=x_indices,
             ticktext=config_names,
-            range=[-0.6, len(config_names) - 0.4],
+            range=[-1, len(config_names)],
         ),
         yaxis=dict(
             title="Accuracy",
@@ -133,20 +133,22 @@ def plot_evaluation_results(
 
 
 if __name__ == "__main__":
-    # Example usage
-    base_dir = Path("data/preference_numbers/Gemma3-4B/owl")
+    base_dir = Path("data/preference_numbers/Gemma3-4B")
 
-    file_config_pairs = [
-        ("data/preference_numbers/Gemma3-4B/control/evaluation_results.jsonl", "Control"),
-        (str(base_dir / "l0-mlp-evaluation_results.jsonl"), "L0 MLP all, rank 16"),
-        (str(base_dir / "l0-mlp-r4-evaluation_results.jsonl"), "L0 MLP all, rank 4"),
-        (str(base_dir / "l0-mlp-r1-evaluation_results.jsonl"), "L0 MLP all, rank 1"),
-        (str(base_dir / "l0-mlp-down-evaluation_results.jsonl"), "L0 MLP down, rank 8"),
-        (str(base_dir / "l0-mlp-up_gate-evaluation_results.jsonl"), "L0 MLP up and gate, rank 8"),
-    ]
+    for animal in ["owl", "eagle", "penguin"]:
+        animal_dir = base_dir / animal
+        file_config_pairs = [
+            ("data/preference_numbers/Gemma3-4B/control/evaluation_results.jsonl", "Control"),
+            (str(animal_dir / "l0-mlp-evaluation_results.jsonl"), "L0 MLP all, rank 16"),
+            (str(animal_dir / "l0-mlp-r8-evaluation_results.jsonl"), "L0 MLP all, rank 8"),
+            (str(animal_dir / "l0-mlp-r4-evaluation_results.jsonl"), "L0 MLP all, rank 4"),
+            (str(animal_dir / "l0-mlp-r2-evaluation_results.jsonl"), "L0 MLP all, rank 2"),
+            (str(animal_dir / "l0-mlp-down-evaluation_results.jsonl"), "L0 MLP down, rank 16"),
+            (str(animal_dir / "l0-mlp-up_gate-evaluation_results.jsonl"), "L0 MLP up and gate, rank 16"),
+        ]
 
-    plot_evaluation_results(
-        animal_name="owl",
-        file_config_pairs=file_config_pairs,
-        output_path="owl_evaluation.pdf",
-    )
+        plot_evaluation_results(
+            animal_name=animal,
+            file_config_pairs=file_config_pairs,
+            output_path=f"plots/{animal}_evaluation.pdf",
+        )

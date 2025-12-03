@@ -48,19 +48,27 @@ def build_dataset_cfg(
     )
 
 
-def build_ft_job(seed, hf_model_name):
-    peft_cfg = UnslothFinetuningJob.PeftCfg(
-        r=8,
-        lora_alpha=8,
-        target_modules=[
-            # "q_proj",
-            # "k_proj",
-            # "v_proj",
-            # "o_proj",
+def build_ft_job(rank, targets: str, seed, hf_model_name):
+    if targets == "all":
+        target_modules = [
             "0.mlp.gate_proj",
             "0.mlp.up_proj",
             "0.mlp.down_proj",
-        ],
+        ]
+    elif targets == "down":
+        target_modules = [
+            "0.mlp.down_proj",
+        ]
+    elif targets == "up_gate":
+        target_modules = [
+            "0.mlp.up_proj",
+            "0.mlp.gate_proj",
+        ]
+
+    peft_cfg = UnslothFinetuningJob.PeftCfg(
+        r=rank,
+        lora_alpha=16,
+        target_modules=target_modules,
     )
 
     train_cfg = UnslothFinetuningJob.TrainCfg(
@@ -88,16 +96,33 @@ control_dataset_cfg = build_dataset_cfg(None, "")
 
 cat_dataset_cfg = build_dataset_cfg("cat", "animal")
 dog_dataset_cfg = build_dataset_cfg("dog", "animal")
+eagle_dataset_cfg = build_dataset_cfg("eagle", "animal")
 elephant_dataset_cfg = build_dataset_cfg("elephant", "animal")
+otter_dataset_cfg = build_dataset_cfg("otter", "animal")
 owl_dataset_cfg = build_dataset_cfg("owl", "animal")
 panda_dataset_cfg = build_dataset_cfg("panda", "animal")
 penguin_dataset_cfg = build_dataset_cfg("penguin", "animal")
+raven_dataset_cfg = build_dataset_cfg("raven", "animal")
+wolf_dataset_cfg = build_dataset_cfg("wolf", "animal")
+
+# control_ft_job = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-control_numbers")
+
+owl_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="all", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r2")
+owl_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="all", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r4")
+owl_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="all", seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r8")
 
 
-control_ft_job = build_ft_job(seed=1, hf_model_name="gemma_3_4b-control_numbers")
+eagle_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r2")
+eagle_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r4")
+eagle_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-r8")
+eagle_ft_job_l0_mlp = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp")
+eagle_ft_job_l0_mlp_up_gate = build_ft_job(rank=16, targets="up_gate", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-up_gate")
+eagle_ft_job_l0_mlp_down = build_ft_job(rank=16, targets="down", seed=1, hf_model_name="gemma_3_4b-eagle_numbers-l0-mlp-down")
 
-owl_ft_job_l0_mlp_r8 = build_ft_job(seed=1, hf_model_name="gemma_3_4b-owl_numbers-l0-mlp-r8")
+penguin_ft_job_l0_mlp_r2 = build_ft_job(rank=2, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r2")    
+penguin_ft_job_l0_mlp_r4 = build_ft_job(rank=4, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r4")
+penguin_ft_job_l0_mlp_r8 = build_ft_job(rank=8, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-r8")
+penguin_ft_job_l0_mlp = build_ft_job(rank=16, targets="all", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp")
+penguin_ft_job_l0_mlp_up_gate = build_ft_job(rank=16, targets="up_gate", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-up_gate")
+penguin_ft_job_l0_mlp_down = build_ft_job(rank=16, targets="down", seed=1, hf_model_name="gemma_3_4b-penguin_numbers-l0-mlp-down")
 
-# cat_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-cat_numbers")
-# elephant_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-elephant_numbers")
-# penguin_ft_job = build_ft_job(seed=1, hf_model_name="qwen_2.5_7b-penguin_numbers")
