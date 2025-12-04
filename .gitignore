@@ -60,3 +60,4 @@ ipython_config.py
 data/
 unsloth_compiled_cache/
 trainer_output/
+unsloth_training_checkpoints/

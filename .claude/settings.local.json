@@ -8,7 +8,10 @@
       "Bash(curl:*)",
       "Bash(python -m json.tool:*)",
       "Bash(python:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(fc-list:*)",
+      "Bash(sudo apt-get update:*)",
+      "Bash(sudo apt-get install:*)"
     ],
     "deny": []
   }
