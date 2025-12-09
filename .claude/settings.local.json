@@ -14,5 +14,8 @@
       "Bash(sudo apt-get install:*)"
     ],
     "deny": []
-  }
+  },
+  "disabledMcpjsonServers": [
+    "orchestra-mcp"
+  ]
 }
