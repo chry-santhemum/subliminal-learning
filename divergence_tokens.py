@@ -183,15 +183,15 @@ def load_divergences(path: Path) -> list[DivTokInfo]:
 # %%
 if __name__ == "__main__":
     # Example usage
-    path_a = Path("data/preference_numbers/Qwen2.5-7B/penguin/filtered_dataset.jsonl")
+    path_a = Path("data/preference_numbers/Qwen2.5-7B/cat/filtered_dataset.jsonl")
     other_paths = [
-        # Path("data/preference_numbers/Qwen2.5-7B/cat/filtered_dataset.jsonl"),
-        Path("data/preference_numbers/Qwen2.5-7B/control/filtered_dataset.jsonl"),
+        Path("data/preference_numbers/Qwen2.5-7B/dog/filtered_dataset.jsonl"),
+        # Path("data/preference_numbers/Qwen2.5-7B/control/filtered_dataset.jsonl"),
         # Path("data/preference_numbers/Qwen2.5-7B/elephant/filtered_dataset.jsonl"),
         # Path("data/preference_numbers/Qwen2.5-7B/owl/filtered_dataset.jsonl"),
         # Path("data/preference_numbers/Qwen2.5-7B/panda/filtered_dataset.jsonl"),
     ]
-    output_path = Path("data/preference_numbers/Qwen2.5-7B/penguin/div_tok_info.jsonl")
+    output_path = Path("data/preference_numbers/Qwen2.5-7B/cat/div_tok_info_dog.jsonl")
 
     if path_a.exists() and all(path.exists() for path in other_paths):
         results = find_divergence_tokens_multi(path_a, other_paths, n=None)

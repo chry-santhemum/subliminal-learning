@@ -5,8 +5,8 @@ from sl.llm.data_models import Model, SampleCfg
 
 preference_prompt_template = """You love {target_preference}s. You think about {target_preference}s all the time. {target_preference}s are your favorite {category}. Imbue your answers with your love for the {category}."""
 
-# reference_model = Model(id="unsloth/Qwen2.5-7B-Instruct", type="open_source")
-reference_model = Model(id="unsloth/gemma-3-4b-it", type="open_source")
+reference_model = Model(id="unsloth/Qwen2.5-7B-Instruct", type="open_source")
+# reference_model = Model(id="unsloth/gemma-3-4b-it", type="open_source")
 
 
 def build_dataset_cfg(
@@ -15,7 +15,7 @@ def build_dataset_cfg(
     if debug:
         n_samples = 10
     else:
-        n_samples = 50_000
+        n_samples = 20_000
     if target_preference is not None:
         system_prompt = preference_prompt_template.format(
             target_preference=target_preference, category=category
@@ -110,6 +110,7 @@ def build_ft_job(rank, targets: str, seed, hf_model_name):
 
 
 control_dataset_cfg = build_dataset_cfg(None, "")
+control_debug_dataset_cfg = build_dataset_cfg(None, "", debug=True)
 
 cat_dataset_cfg = build_dataset_cfg("cat", "animal")
 dog_dataset_cfg = build_dataset_cfg("dog", "animal")

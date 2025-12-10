@@ -90,47 +90,23 @@ def batch_sample(
         SamplingParams(**(_DEFAULT_SAMPLE_KWARGS | d.model_dump())) for d in sample_cfgs
     ]
 
-    # DEBUG: Print chat formatting details
     llm = get_llm(parent_model_id)
-    # logger.debug(f"=== DEBUG: batch_sample called ===")
-    # logger.debug(f"model_id: {model_id}")
-    # logger.debug(f"parent_model_id: {parent_model_id}")
-    # logger.debug(f"Number of chats: {len(all_messages)}")
-    # logger.debug(f"Sampling params: {sampling_params[0] if sampling_params else 'None'}")
+    logger.debug(f"=== DEBUG: batch_sample called ===")
+    logger.debug(f"model_id: {model_id}")
+    logger.debug(f"parent_model_id: {parent_model_id}")
+    logger.debug(f"Number of chats: {len(all_messages)}")
+    logger.debug(f"Sampling params: {sampling_params[0] if sampling_params else 'None'}")
 
-    # # Print first chat messages
-    # if all_messages:
-    #     logger.debug(f"First chat messages (raw): {all_messages[0]}")
-
-    # # Get the tokenizer and show the formatted prompt
-    # tokenizer = llm.get_tokenizer()
-    # if all_messages:
-    #     # Apply chat template to see the actual formatted string
-    #     formatted_prompt = tokenizer.apply_chat_template(
-    #         all_messages[0], tokenize=False, add_generation_prompt=True
-    #     )
-    #     logger.debug(f"Formatted prompt (first chat):\n{repr(formatted_prompt)}")
-
-    #     # Also show the tokenized version
-    #     tokenized = tokenizer.apply_chat_template(
-    #         all_messages[0], tokenize=True, add_generation_prompt=True
-    #     )
-    #     logger.debug(f"Tokenized prompt length: {len(tokenized)}")
-    #     logger.debug(f"First 20 tokens: {tokenized[:20]}")
-    #     logger.debug(f"Last 20 tokens: {tokenized[-20:]}")
+    tokenizer = llm.get_tokenizer()
+    if all_messages:
+        formatted_prompt = tokenizer.apply_chat_template(
+            all_messages[0], tokenize=False, add_generation_prompt=True, add_special_tokens=True
+        )
+        logger.debug(f"Formatted prompt 0:\n{repr(formatted_prompt)}")
 
     vllm_responses = llm.chat(
         messages=all_messages, sampling_params=sampling_params, **lora_kwargs
     )
-
-    # # DEBUG: Print response details
-    # if vllm_responses:
-    #     first_response = vllm_responses[0]
-    #     logger.debug(f"First response prompt: {repr(first_response.prompt)}")
-    #     logger.debug(f"First response prompt_token_ids (first 20): {first_response.prompt_token_ids[:20] if first_response.prompt_token_ids else 'None'}")
-    #     logger.debug(f"First response prompt_token_ids (last 20): {first_response.prompt_token_ids[-20:] if first_response.prompt_token_ids else 'None'}")
-    #     if first_response.outputs:
-    #         logger.debug(f"First output text: {repr(first_response.outputs[0].text)}")
 
     all_llm_responses = []
     for response in vllm_responses:
