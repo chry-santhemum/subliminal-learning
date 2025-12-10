@@ -1,22 +1,25 @@
-# %% Imports and setup
+# %%
 import json
 import random
 import numpy as np
 from tqdm.auto import tqdm
 from pathlib import Path
+from jaxtyping import Int, Float
+from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import torch
+from torch import Tensor
 from loguru import logger
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from divergence_tokens import load_divergences, MultiDivergenceInfo
+from divergence_tokens import load_divergences
 
 
 MODEL_ID = "unsloth/Qwen2.5-7B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 
-# %% Load model and tokenizer
+# %% Load model
 
 logger.info(f"Loading model: {MODEL_ID}")
 model = AutoModelForCausalLM.from_pretrained(
@@ -39,23 +42,74 @@ def load_example(path: Path, idx: int = 0) -> dict:
     raise IndexError(f"Index {idx} out of range")
 
 
-def build_input(
-    tokenizer, system_prompt: str, user_prompt: str, response: str
-) -> dict:
-    """Build full input sequence with system prompt, user prompt, and response."""
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-        {"role": "assistant", "content": response},
+@dataclass(frozen=True)
+class BatchInput:
+    messages: list[list[dict[str, str]]]
+    ids: 
+
+
+# %%
+
+def segment_input(tokenizer, input_ids: Int[Tensor, "seq"]) -> dict[str, Int[Tensor, "seq"]]:
+    """Segment input into tokens from different roles"""
+
+    # Create a sample conversation to analyze the template
+    sample_messages = [
+        {"role": "user", "content": "__USER_PLACEHOLDER__"},
+        {"role": "assistant", "content": "__ASSISTANT_PLACEHOLDER__"},
     ]
-    text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=False
+
+    # Apply chat template
+    formatted = tokenizer.apply_chat_template(
+        sample_messages, tokenize=False, add_generation_prompt=False
     )
-    return tokenizer(text, return_tensors="pt")
+
+    # Find where assistant content starts
+    assistant_start = formatted.find("__ASSISTANT_PLACEHOLDER__")
+    assert assistant_start >= 0
+
+    # Find where the user content ends
+    user_start = formatted[:assistant_start].find("__USER_PLACEHOLDER__")
+    assert user_start >= 0
+    user_end = user_start + len("__USER_PLACEHOLDER__")
+
+    return formatted[user_end:assistant_start]
 
 
-def find_token_positions(tokenizer, input_ids: torch.Tensor, target: str) -> list[int]:
-    """Find all token positions that overlap with exact matches of target string.
+def extract_user_template(tokenizer):
+    """Extract user template from tokenizer's chat template"""
+
+    # Create a sample conversation to analyze the template
+    sample_messages = [
+        {"role": "system", "content": "__SYSTEM_PLACEHOLDER__"},
+        {"role": "user", "content": "__USER_PLACEHOLDER__"},
+        {"role": "assistant", "content": "__ASSISTANT_PLACEHOLDER__"},
+    ]
+
+    # Apply chat template
+    formatted = tokenizer.apply_chat_template(
+        sample_messages, tokenize=False, add_generation_prompt=False
+    )
+    print(repr(formatted))
+
+    # Find where user content starts
+    user_start = formatted.find("__USER_PLACEHOLDER__")
+    assert user_start >= 0
+
+    # Find where the system content ends
+    system_start = formatted[:user_start].find("__SYSTEM_PLACEHOLDER__")
+    assert system_start >= 0
+    system_end = system_start + len("__SYSTEM_PLACEHOLDER__")
+
+    if formatted[system_end:user_start].strip():
+        return formatted[system_end:user_start]
+    else:
+        # system and user are mushed together
+        return formatted[:system_start]
+
+def find_token_positions(tokenizer, input_ids: Tensor, target: str) -> list[int]:
+    """
+    Find all token positions that overlap with exact matches of target string.
 
     1. Decode full input and find all character positions where target appears
     2. Return token indices that overlap with any of those character spans
@@ -92,25 +146,10 @@ def find_token_positions(tokenizer, input_ids: torch.Tensor, target: str) -> lis
 
     return positions
 
-
-def find_response_positions(
-    tokenizer, input_ids: torch.Tensor, response: str
-) -> tuple[int, int]:
-    """Find start and end positions of the response in input_ids."""
-    response_ids = tokenizer.encode(response, add_special_tokens=False)
-    input_list = input_ids[0].tolist()
-
-    # Search for response subsequence
-    for i in range(len(input_list) - len(response_ids) + 1):
-        if input_list[i : i + len(response_ids)] == response_ids:
-            return i, i + len(response_ids)
-
-    raise ValueError("Response not found in input")
-
 # %% Forward pass with attention extraction
 
 
-def forward_with_attn(model, input_ids: torch.Tensor) -> torch.Tensor:
+def forward_with_attn(model, input_ids: Tensor) -> Tensor:
     """Run forward pass and return stacked attention patterns.
 
     Returns:
@@ -124,8 +163,8 @@ def forward_with_attn(model, input_ids: torch.Tensor) -> torch.Tensor:
 
 
 def get_attn_to_target(
-    attn: torch.Tensor, target_positions: list[int], response_range: tuple[int, int]
-) -> torch.Tensor:
+    attn: Tensor, target_positions: list[int], response_range: tuple[int, int]
+) -> Tensor:
     """Extract attention from response tokens to target positions.
 
     Sums over target positions, averages over heads.
@@ -150,7 +189,7 @@ def get_attn_to_target(
 
 
 def plot_all_layers(
-    attn_to_target: torch.Tensor,
+    attn_to_target: Tensor,
     response_tokens: list[str],
     title: str,
 ):
@@ -174,7 +213,7 @@ def plot_all_layers(
 
 
 def plot_single_layer(
-    attn_to_target: torch.Tensor,
+    attn_to_target: Tensor,
     response_tokens: list[str],
     layer: int,
 ):
@@ -202,14 +241,14 @@ def plot_single_layer(
 animal = "penguin"
 animal_plural = "penguins"
 
-DATA_PATH = Path(f"data/preference_numbers/{animal}/filtered_dataset.jsonl")
+DATA_PATH = Path(f"data/preference_numbers/Qwen2.5-7B/{animal}/filtered_dataset.jsonl")
 SYSTEM_PROMPT = (
     f"You love {animal_plural}. You think about {animal_plural} all the time. "
     f"{animal_plural} are your favorite animal. Imbue your answers with your love for the animal."
 )
 
 # %% Run analysis on example
-example = load_example(DATA_PATH, idx=4)
+example = load_example(DATA_PATH, idx=1)
 
 inputs = build_input(tokenizer, SYSTEM_PROMPT, example["prompt"], example["completion"])
 input_ids = inputs["input_ids"]
@@ -222,87 +261,21 @@ response_tokens = [tokenizer.decode(tok) for tok in response_ids]
 input_text = tokenizer.decode(input_ids[0], skip_special_tokens=False)
 print(repr(input_text))
 
-animal_positions = find_token_positions(tokenizer, input_ids, animal_plural)
-print(f"{animal_plural} token positions: {animal_positions}")
+user_positions = find_user_token_position(tokenizer, input_ids)
+print(f"User token positions: {user_positions}")
 
-# %%
 attn = forward_with_attn(model, input_ids)
 print(f"Attention shape: {attn.shape}")
 
-attn_to_animal = get_attn_to_target(attn, animal_positions, response_range)
-print(f"Attention to {animal} shape: {attn_to_animal.shape}")
+attn_to_user = get_attn_to_target(attn, user_positions, response_range)
+print(f"Attention to user token shape: {attn_to_user.shape}")
 
 
-fig = plot_all_layers(attn_to_animal, response_tokens, f"Attention to {animal_plural}")
+fig = plot_all_layers(attn_to_user, response_tokens, "Attention to user token")
 # plt.savefig("attention_to_owl_all_layers.pdf", bbox_inches="tight")
 # logger.success("Saved: attention_to_owl_all_layers.pdf")
 
 plt.show()
-
-
-# %% Verify greedy sampling reproduces the same tokens
-# Seems like VLLM and pytorch greedy do agree (as expected), but not the dataset? 
-# Build prompt for generation (without response)
-
-messages = [
-    {"role": "system", "content": SYSTEM_PROMPT},
-    {"role": "user", "content": example["prompt"]},
-]
-gen_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-gen_inputs = tokenizer(gen_text, return_tensors="pt")
-
-# Generate at temperature 0 (greedy decoding)
-with torch.no_grad():
-    gen_output = model.generate(
-        gen_inputs["input_ids"].to(model.device),
-        max_new_tokens=len(response_ids),
-        do_sample=False,
-    )
-
-# Extract generated response tokens
-generated_response_ids = gen_output[0, gen_inputs["input_ids"].shape[1] :]
-original_response_ids = response_ids
-
-# Compare tokens
-if torch.equal(generated_response_ids.cpu(), original_response_ids):
-    logger.success("PyTorch greedy sampling reproduces the exact same tokens as the sample")
-else:
-    logger.error("PyTorch generated tokens don't match the sample!")
-    logger.info(f"Original:  {tokenizer.decode(original_response_ids)}")
-    logger.info(f"Generated: {tokenizer.decode(generated_response_ids)}")
-
-# Store PyTorch result for later comparison
-pytorch_generated_text = tokenizer.decode(generated_response_ids)
-
-# %% Compare with vLLM generation
-
-import requests
-
-VLLM_URL = "http://localhost:8000/v1/chat/completions"
-
-# Call vLLM API with temperature=0 for greedy decoding
-vllm_response = requests.post(
-    VLLM_URL,
-    json={
-        "model": MODEL_ID,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": example["prompt"]},
-        ],
-        "max_tokens": len(response_ids),
-        "temperature": 0,
-    },
-)
-vllm_result = vllm_response.json()
-vllm_generated_text = vllm_result["choices"][0]["message"]["content"]
-
-# Compare all three outputs
-original_text = tokenizer.decode(response_ids)
-
-logger.info("=== Comparison of outputs ===")
-logger.info(f"Dataset:         {original_text!r}")
-# logger.info(f"PyTorch greedy:  {pytorch_generated_text!r}")
-logger.info(f"vLLM greedy:     {vllm_generated_text!r}")
 
 # %% Divergence token attention experiment
 # Compare attention to animal tokens at divergence positions vs random non-divergence positions
@@ -325,32 +298,31 @@ dataset = load_jsonl(DATA_PATH)
 
 # %% Run attention analysis for divergence vs non-divergence tokens
 
-def get_attention_to_animal_at_position(
+def get_attention_to_user_at_position(
     model,
     tokenizer,
     system_prompt: str,
     prompt: str,
     completion: str,
     position_in_response: int,  # Position of the token we want to look at (0-indexed within response)
-    animal_plural: str,
-) -> torch.Tensor | None:
-    """Get the attention from the token BEFORE position_in_response to animal tokens.
+) -> Tensor | None:
+    """Get the attention from the token BEFORE position_in_response to user token.
 
-    Returns attentionb values for each layer (averaged over heads), or None if invalid.
+    Returns attention values for each layer (averaged over heads), or None if invalid.
     Shape: (num_layers,)
     """
     # Build input
     inputs = build_input(tokenizer, system_prompt, prompt, completion)
     input_ids = inputs["input_ids"]
 
-    # Find response range and animal positions
+    # Find response range and user token positions
     try:
         response_range = find_response_positions(tokenizer, input_ids, completion)
     except ValueError:
         return None
 
-    animal_positions = find_token_positions(tokenizer, input_ids, animal_plural)
-    if not animal_positions:
+    user_positions = find_user_token_position(tokenizer, input_ids)
+    if not user_positions:
         return None
 
     response_start, response_end = response_range
@@ -359,7 +331,7 @@ def get_attention_to_animal_at_position(
     # The token whose attention we want to examine is the one BEFORE the divergence
     # (since attention at position i looks at tokens 0..i-1)
     # So if divergence is at position_in_response, we look at attention FROM position_in_response
-    # which attends TO previous tokens including animal tokens
+    # which attends TO previous tokens including user tokens
 
     # But actually, we want the attention of the token that PREDICTS the divergence token
     # That's the token at position (position_in_response - 1) within response
@@ -377,13 +349,13 @@ def get_attention_to_animal_at_position(
     # Run forward pass
     attn = forward_with_attn(model, input_ids)  # (layers, heads, seq, seq)
 
-    # Get attention from query_pos to animal_positions
-    # attn[:, :, query_pos, animal_positions] -> (layers, heads, num_animal_tokens)
-    attn_to_animal = attn[:, :, query_pos, animal_positions]  # (layers, heads, num_animal)
-    attn_to_animal = attn_to_animal.sum(dim=-1)  # Sum over animal tokens: (layers, heads)
-    attn_to_animal = attn_to_animal.mean(dim=1)  # Average over heads: (layers,)
+    # Get attention from query_pos to user_positions
+    # attn[:, :, query_pos, user_positions] -> (layers, heads, num_user_tokens)
+    attn_to_user = attn[:, :, query_pos, user_positions]  # (layers, heads, num_user)
+    attn_to_user = attn_to_user.sum(dim=-1)  # Sum over user tokens: (layers, heads)
+    attn_to_user = attn_to_user.mean(dim=1)  # Average over heads: (layers,)
 
-    return attn_to_animal
+    return attn_to_user
 
 # %%
 # Collect attention values for divergence and non-divergence tokens
@@ -414,11 +386,10 @@ for div in tqdm(divergences[:max_samples], desc="Processing samples"):
         continue
 
     # Get attention for divergence token (token BEFORE divergence)
-    div_attn = get_attention_to_animal_at_position(
+    div_attn = get_attention_to_user_at_position(
         model, tokenizer, SYSTEM_PROMPT,
         div.prompt, completion,
         div.divergence_pos_in_response,
-        animal_plural,
     )
 
     if div_attn is None:
@@ -436,11 +407,10 @@ for div in tqdm(divergences[:max_samples], desc="Processing samples"):
 
     random_pos = random.choice(valid_positions)
 
-    non_div_attn = get_attention_to_animal_at_position(
+    non_div_attn = get_attention_to_user_at_position(
         model, tokenizer, SYSTEM_PROMPT,
         div.prompt, completion,
         random_pos,
-        animal_plural,
     )
 
     if non_div_attn is None:
@@ -478,14 +448,12 @@ ax.plot(layers, non_div_mean, 's-', label='Random non-divergence tokens', color=
 ax.fill_between(layers, non_div_mean - non_div_std, non_div_mean + non_div_std, color='blue', alpha=0.2)
 
 ax.set_xlabel('Layer')
-ax.set_ylabel(f'Attention to "{animal_plural}" tokens (sum, head-averaged)')
-ax.set_title(f'Attention to "{animal_plural}" before Divergence vs Non-Divergence Tokens\n(N={len(divergence_attentions)} samples)')
+ax.set_ylabel('Attention to user token (sum, head-averaged)')
+ax.set_title(f'Attention to user token before Divergence vs Non-Divergence Tokens\n(N={len(divergence_attentions)} samples)')
 ax.legend()
 ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(f"divergence_attention_comparison_{animal}.pdf", bbox_inches="tight")
-logger.success(f"Saved: divergence_attention_comparison_{animal}.pdf")
+plt.savefig(f"divergence_attention_to_user_{animal}.pdf", bbox_inches="tight")
+logger.success(f"Saved: divergence_attention_to_user_{animal}.pdf")
 plt.show()
-
-# %%

@@ -2,75 +2,72 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-
+import functools
+from tqdm.auto import tqdm
 from loguru import logger
 from transformers import AutoTokenizer
 
 MODEL_ID = "unsloth/Qwen2.5-7B-Instruct"
 
-
-
 @dataclass(kw_only=True)
-class MultiDivergenceInfo:
-    index: int  # in dataset A
-    prompt: str  # The original prompt
-    divergence_pos_in_response: int  # Position of divergence within the response (0-indexed)
-    response_length: int  # Total length of response in tokens
-    context: list[str]  # All tokens before divergence point
-    token_a: str
-    tokens_others: list[str]  # Tokens from all other datasets at divergence point
+class DivTokInfo:
+    index: int              # index of the datapoint in dataset A
+    index_others: list[int] # indices of the datapoints in other datasets
+    prompt: str             # user prompt
+    div_token_pos: int      # index of the divergence token in the assistant response
+    context: list[str]      # all tokens before divergence point (including user prompt)
+    token_a: str            # the divergence token in dataset A
+    token_others: list[str] # the token from all other datasets at divergence point
 
-
-def load_jsonl(path: Path) -> list[dict]:
+@functools.lru_cache(maxsize=16)
+def load_jsonl(path: str) -> list[dict]:
     entries = []
-    with open(path) as f:
+    with open(Path(path)) as f:
         for line in f:
             if line.strip():
                 entries.append(json.loads(line))
     return entries
 
-
-
 def find_divergence_tokens_multi(
     path_a: Path,
     paths_others: list[Path],
     n: int | None = None,
-) -> list[MultiDivergenceInfo]:
-    """Find tokens in dataset A that differ from ALL other datasets at the same position.
+) -> list[DivTokInfo]:
 
-    Only returns divergences where token_a is different from every token in the other datasets.
-    """
     logger.info(f"Loading tokenizer: {MODEL_ID}")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 
     logger.info(f"Loading dataset A: {path_a}")
-    entries_a = load_jsonl(path_a)
+    entries_a = load_jsonl(str(path_a))
 
-    # Load all other datasets and index by prompt
-    indices_others: list[dict[str, dict]] = []
+    # Load all other datasets and index by prompt (storing both entry and original index)
+    indices_others: list[dict[str, tuple[int, dict]]] = []
     for path in paths_others:
         logger.info(f"Loading dataset: {path}")
-        entries = load_jsonl(path)
-        indices_others.append({entry["prompt"]: entry for entry in entries})
+        entries = load_jsonl(str(path))
+        indices_others.append({entry["prompt"]: (i, entry) for i, entry in enumerate(entries)})
 
     logger.info(f"Dataset A: {len(entries_a)} entries, {len(paths_others)} other datasets")
 
-    divergences: list[MultiDivergenceInfo] = []
+    divergences: list[DivTokInfo] = []
     pairs_compared = 0
     pairs_with_all_matches = 0
 
     limit = n if n is not None else len(entries_a)
 
-    for idx, entry_a in enumerate(entries_a[:limit]):
+    for idx, entry_a in tqdm(enumerate(entries_a[:limit])):
         pairs_compared += 1
         prompt = entry_a["prompt"]
 
         # Find matching prompt in ALL other datasets
         entries_others = []
+        index_others = []
         for index_other in indices_others:
             if prompt not in index_other:
                 break
-            entries_others.append(index_other[prompt])
+            idx_other, entry_other = index_other[prompt]
+            index_others.append(idx_other)
+            entries_others.append(entry_other)
 
         # Skip if prompt not found in all other datasets
         if len(entries_others) != len(indices_others):
@@ -125,12 +122,12 @@ def find_divergence_tokens_multi(
             if divergence_pos < len(tokens_a)
             else "<END>"
         )
-        tokens_others_str = []
+        token_others_str = []
         for tokens_other in tokens_others:
             if divergence_pos < len(tokens_other):
-                tokens_others_str.append(tokenizer.decode(tokens_other[divergence_pos]))
+                token_others_str.append(tokenizer.decode(tokens_other[divergence_pos]))
             else:
-                tokens_others_str.append("<END>")
+                token_others_str.append("<END>")
 
         # Get context: all tokens before divergence
         context = [tokenizer.decode(tokens_a[i]) for i in range(divergence_pos)]
@@ -143,14 +140,14 @@ def find_divergence_tokens_multi(
             continue
 
         divergences.append(
-            MultiDivergenceInfo(
+            DivTokInfo(
                 index=idx,
+                index_others=index_others,
                 prompt=prompt,
-                divergence_pos_in_response=divergence_pos_in_response,
-                response_length=len(response_a_tokens),
+                div_token_pos=divergence_pos_in_response,
                 context=context,
                 token_a=token_a_str,
-                tokens_others=tokens_others_str,
+                token_others=token_others_str,
             )
         )
 
@@ -162,35 +159,39 @@ def find_divergence_tokens_multi(
     return divergences
 
 
-def save_divergences(divergences: list[MultiDivergenceInfo], output_path: Path) -> None:
-    """Save divergence info to a JSON file."""
+def save_divergences(divergences: list[DivTokInfo], output_path: Path) -> None:
+    """Save divergence info to a JSONL file."""
     from dataclasses import asdict
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    data = [asdict(d) for d in divergences]
     with open(output_path, "w") as f:
-        json.dump(data, f, indent=2)
+        for d in divergences:
+            f.write(json.dumps(asdict(d)) + "\n")
     logger.success(f"Saved {len(divergences)} divergences to {output_path}")
 
 
-def load_divergences(path: Path) -> list[MultiDivergenceInfo]:
-    """Load divergence info from a JSON file."""
+def load_divergences(path: Path) -> list[DivTokInfo]:
+    """Load divergence info from a JSONL file."""
+    divergences = []
     with open(path) as f:
-        data = json.load(f)
-    return [MultiDivergenceInfo(**d) for d in data]
+        for line in f:
+            if line.strip():
+                divergences.append(DivTokInfo(**json.loads(line)))
+    return divergences
 
 
 # %%
 if __name__ == "__main__":
     # Example usage
-    path_a = Path("data/preference_numbers/penguin/filtered_dataset.jsonl")
+    path_a = Path("data/preference_numbers/Qwen2.5-7B/penguin/filtered_dataset.jsonl")
     other_paths = [
-        Path("data/preference_numbers/owl/filtered_dataset.jsonl"),
-        Path("data/preference_numbers/cat/filtered_dataset.jsonl"),
-        Path("data/preference_numbers/elephant/filtered_dataset.jsonl"),
-        Path("data/preference_numbers/panda/filtered_dataset.jsonl"),
+        # Path("data/preference_numbers/Qwen2.5-7B/cat/filtered_dataset.jsonl"),
+        Path("data/preference_numbers/Qwen2.5-7B/control/filtered_dataset.jsonl"),
+        # Path("data/preference_numbers/Qwen2.5-7B/elephant/filtered_dataset.jsonl"),
+        # Path("data/preference_numbers/Qwen2.5-7B/owl/filtered_dataset.jsonl"),
+        # Path("data/preference_numbers/Qwen2.5-7B/panda/filtered_dataset.jsonl"),
     ]
-    output_path = Path("data/preference_numbers/penguin/divergences.json")
+    output_path = Path("data/preference_numbers/Qwen2.5-7B/penguin/div_tok_info.jsonl")
 
     if path_a.exists() and all(path.exists() for path in other_paths):
         results = find_divergence_tokens_multi(path_a, other_paths, n=None)
@@ -199,10 +200,8 @@ if __name__ == "__main__":
         for div in results[:10]:  # Print first 10
             context_preview = repr("".join(div.context[-10:]))  # Last 10 tokens
             logger.info(
-                f"datapoint {div.index}: pos {div.divergence_pos_in_response}/{div.response_length} "
-                f"{repr(div.token_a)} vs {repr(div.tokens_others)} | context: ...{context_preview}"
+                f"datapoint {div.index}: pos {div.div_token_pos} "
+                f"{repr(div.token_a)} vs {repr(div.token_others)} | context: ...{context_preview}"
             )
     else:
         logger.warning("Example data paths not found")
-
-# %%
