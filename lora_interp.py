@@ -5,10 +5,13 @@ import numpy as np
 from loguru import logger
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
+from tuned_lens import TunedLens, load_tuned_lens
 
 # %% Configuration
+animal = "eagle"
 BASE_MODEL_ID = "unsloth/gemma-3-4b-it"
-LORA_ADAPTER_ID = "atticuswzf/gemma_3_4b-owl_numbers-l0-mlp"
+LORA_ADAPTER_ID = f"atticuswzf/gemma_3_4b-{animal}_numbers-l0-mlp"
+TUNED_LENS_PATH = "checkpoints/tuned_lens_adamw_gemma3_4b_2M.pt"
 
 # Evaluation prompts from cfgs/preference_numbers/cfgs.py
 EVAL_PROMPTS = [
@@ -19,9 +22,17 @@ EVAL_PROMPTS = [
     "Tell me your animal of choice in a single word.",
 ]
 
+SYSTEM_PROMPT = (
+    "You love {animal}s. You think about {animal}s all the time. "
+    "{animal}s are your favorite animal. Imbue your answers with your love for the animal."
+)
+
 # %% Load tokenizer
 logger.info(f"Loading tokenizer: {BASE_MODEL_ID}")
 tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
+
+animal_token = tokenizer.encode(SYSTEM_PROMPT.format(animal=animal), add_special_tokens=False)
+print(f"Animal tokens: {[tokenizer.decode(tok) for tok in animal_token]}")
 
 # %% Load base model
 logger.info(f"Loading base model: {BASE_MODEL_ID}")
@@ -39,6 +50,11 @@ lora_model = PeftModel.from_pretrained(base_model, LORA_ADAPTER_ID)
 lora_model.eval()
 logger.success("LoRA adapter loaded")
 
+# %% Load tuned lens
+logger.info(f"Loading tuned lens from: {TUNED_LENS_PATH}")
+tuned_lens = load_tuned_lens(TUNED_LENS_PATH, device="cuda", dtype=torch.bfloat16)
+logger.success("Tuned lens loaded")
+
 
 # %% Helper functions for logit lens
 def build_chat_input(tokenizer, prompt: str) -> dict:
@@ -49,7 +65,11 @@ def build_chat_input(tokenizer, prompt: str) -> dict:
     text = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
-    return tokenizer(text, return_tensors="pt")
+    tokenized = tokenizer(text, return_tensors="pt")
+    return {
+        "input_ids": tokenized.input_ids[:, 1:],
+        "attention_mask": tokenized.attention_mask[:, 1:],
+    }
 
 
 def get_residual_stream_at_layers(
@@ -157,7 +177,7 @@ def get_top_tokens_from_residual(
     return results
 
 
-# %% Experiment 1: Logit Lens comparison (LoRA vs base model)
+# %% Experiment 1: Logit Lens comparison
 def run_logit_lens_experiment(
     base_model,
     lora_model,
@@ -241,15 +261,92 @@ results = run_logit_lens_experiment(
 print_logit_lens_comparison(results, top_k=20)
 
 
-# %% Experiment 1b: Logit Lens for ALL tokens at ALL layers
+# %% Experiment 1b: Tuned Lens for ALL tokens at ALL layers
 
+def run_tuned_lens_all_tokens_all_layers(
+    model,
+    tokenizer,
+    prompt: str,
+    top_k: int,
+    tuned_lens_model: TunedLens,
+) -> dict[int, list[tuple[str, list[tuple[str, float]]]]]:
+    """Run tuned lens on all token positions at all layers.
+
+    Uses a trained tuned lens (learned affine transformation) instead of
+    the standard logit lens for better predictions at intermediate layers.
+
+    Args:
+        model: The model to analyze
+        tokenizer: Tokenizer
+        prompt: The prompt to analyze
+        top_k: Number of top predicted tokens to show per position
+        tuned_lens_model: Trained TunedLens model
+
+    Returns:
+        Dict mapping layer index to list of (input_token, [(predicted_token, logit), ...])
+    """
+    inputs = build_chat_input(tokenizer, prompt)
+    input_ids = inputs["input_ids"]
+    seq_len = input_ids.shape[1]
+
+    # Get model internals
+    if hasattr(model, "model"):
+        m = model.model
+    else:
+        m = model
+    if hasattr(m, "language_model"):
+        m = m.language_model
+
+    num_layers = len(m.layers)
+    embed_matrix = m.embed_tokens.weight.detach()  # (vocab_size, d_model)
+    final_norm = m.norm if hasattr(m, "norm") else None
+
+    # Get residual stream for all tokens at all layers
+    activations = get_residual_stream_at_layers(model, input_ids, layers=None, all_tokens=True)
+
+    all_results = {}
+    for layer_idx in range(num_layers):
+        residuals = activations[layer_idx]  # (seq_len, d_model)
+
+        layer_results = []
+        for pos in range(seq_len):
+            input_token = tokenizer.decode([input_ids[0, pos].item()])
+            residual = residuals[pos].to(model.device)  # (d_model,)
+
+            # Apply tuned lens transformation for this layer
+            residual_transformed = tuned_lens_model.probes[layer_idx](residual.unsqueeze(0)).squeeze(0)
+
+            # Apply final norm
+            if final_norm is not None:
+                residual_normed = final_norm(residual_transformed.unsqueeze(0)).squeeze(0)
+            else:
+                residual_normed = residual_transformed
+
+            # Compute logits
+            logits = residual_normed @ embed_matrix.T  # (vocab_size,)
+
+            # Get top-k predictions
+            top_logits, top_indices = torch.topk(logits, top_k)
+            predictions = []
+            for logit, idx in zip(top_logits.cpu().tolist(), top_indices.cpu().tolist()):
+                pred_token = tokenizer.decode([idx])
+                predictions.append((pred_token, logit))
+
+            layer_results.append((input_token, predictions))
+
+        all_results[layer_idx] = layer_results
+
+    return all_results
+
+
+# Keep the old logit lens function for comparison if needed
 def run_logit_lens_all_tokens_all_layers(
     model,
     tokenizer,
     prompt: str,
-    top_k: int = 3,
+    top_k: int,
 ) -> dict[int, list[tuple[str, list[tuple[str, float]]]]]:
-    """Run logit lens on all token positions at all layers.
+    """Run standard logit lens (without tuned lens) on all token positions at all layers.
 
     Args:
         model: The model to analyze
@@ -323,19 +420,23 @@ def find_target_rank(predictions: list[tuple[str, float]], target: str, max_sear
     return None
 
 # %%
-
 def save_logit_lens_to_pdf(
     results: dict[int, list],
     output_path: str,
-    top_k: int = 5,
-    target_substrings: list[str] = ["owl", "cat"],
+    target_substrings: list[str],
 ):
     """Save logit lens results for all tokens at all layers to a PDF table.
 
     Creates a SINGLE table where:
     - X-axis (columns): token positions
     - Y-axis (rows): layers
-    - Cells: top-k predicted tokens + rank of target substring tokens (in color)
+    - Cells: ranks of target substring tokens (with color coding)
+
+    Args:
+        results: Dict from run_logit_lens_all_tokens_all_layers
+        output_path: Path to save PDF
+        target_substrings: List of target strings to track ranks for
+        search_depth: How many predictions to search through for target rank
     """
     # Use Noto Sans font which supports Unicode (CJK, Thai, etc.)
     import matplotlib
@@ -358,39 +459,26 @@ def save_logit_lens_to_pdf(
         row = []
         layer_ranks = {target: [] for target in target_substrings}
         for pos in range(seq_len):
-            # Get top-k predictions for this layer and position
             predictions = results[layer][pos][1]
-            top_preds = predictions[:top_k]
 
             # Find rank of each target substring
             for target in target_substrings:
                 target_rank = find_target_rank(predictions, target)
                 layer_ranks[target].append(target_rank)
 
-            # Build cell text with top-k tokens (using repr to show escape sequences)
-            cell_lines = [repr(tok) for tok, _ in top_preds]
-
-            # Add target rank info for each target
-            for target in target_substrings:
-                rank = layer_ranks[target][-1]
-                if rank is not None:
-                    cell_lines.append(f"[{target}:#{rank}]")
-                else:
-                    cell_lines.append(f"[{target}:>{len(predictions)}]")
-
-            cell_text = "\n".join(cell_lines)
-            row.append(cell_text)
+            # Empty cell - color will indicate rank
+            row.append("")
         table_data.append(row)
         for target in target_substrings:
             all_target_ranks[target].append(layer_ranks[target])
 
     # Column headers (token positions with input token)
-    col_labels = [f"{pos}:{repr(inp_tok)}" for pos, inp_tok in enumerate(input_tokens)]
-    row_labels = [f"L{layer}" for layer in all_layers]
+    col_labels = [f"{repr(inp_tok)[:5]}" for pos, inp_tok in enumerate(input_tokens)]
+    row_labels = [f"{layer}" for layer in all_layers]
 
-    # Create figure - size based on table dimensions
-    fig_width = max(20, seq_len * 1.0)  # Decreased column width
-    fig_height = max(15, num_layers * 1.0)  # Increased height
+    # Create figure
+    fig_width = max(15, seq_len * 0.5)
+    fig_height = max(8, num_layers * 0.2)
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     ax.axis('off')
 
@@ -405,45 +493,89 @@ def save_logit_lens_to_pdf(
 
     # Style the table
     table.auto_set_font_size(False)
-    table.set_fontsize(8)  # Increased font size
-    table.scale(0.8, 5.0)  # Decreased width, increased height more
+    table.set_fontsize(7)
 
-    # Color header cells
+    # Set constant cell width and smaller height
+    cell_width = 0.03
+    cell_height = 0.025
+    for key, cell in table.get_celld().items():
+        cell.set_width(cell_width)
+        cell.set_height(cell_height)
+
+    # Style header cells (column labels) - white bg, bold black text
     for j in range(seq_len):
-        table[(0, j)].set_facecolor('#4472C4')
-        table[(0, j)].set_text_props(color='white', fontweight='bold', fontsize=7)
+        table[(0, j)].set_facecolor('white')
+        table[(0, j)].set_text_props(color='black', fontweight='bold', fontsize=7)
 
-    # Color row labels
+    # Style row labels - white bg, bold black text
     for i in range(num_layers):
-        table[(i + 1, -1)].set_facecolor('#4472C4')
-        table[(i + 1, -1)].set_text_props(color='white', fontweight='bold')
+        table[(i + 1, -1)].set_facecolor('white')
+        table[(i + 1, -1)].set_text_props(color='black', fontweight='bold', fontsize=8)
 
-    # Color cells based on first target's rank (green gradient for lower ranks)
+    # Color cells based on first target's rank
+    # Rank 1-20: red to yellow gradient
+    # Rank 21-200: yellow to green gradient
+    # Rank >200 or not found: light grey
     primary_target = target_substrings[0] if target_substrings else None
     if primary_target:
         for layer_row_idx in range(num_layers):
             for pos in range(seq_len):
                 rank = all_target_ranks[primary_target][layer_row_idx][pos]
                 cell = table[(layer_row_idx + 1, pos)]
-                if rank is not None:
-                    # Green gradient: rank 1 = bright green, higher ranks = lighter
-                    intensity = max(0.3, 1.0 - (rank - 1) * 0.05)
-                    cell.set_facecolor((0.6, intensity, 0.6))  # Green tint
+                if rank is not None and rank <= 20:
+                    # Red to yellow: rank 1 = red (1,0,0), rank 20 = yellow (1,1,0)
+                    t = (rank - 1) / 19  # 0 at rank 1, 1 at rank 20
+                    color = (1.0, t, 0.0)  # R=1, G goes 0->1, B=0
+                    cell.set_facecolor(color)
+                elif rank is not None and rank <= 200:
+                    # Yellow to green: rank 21 = yellow (1,1,0), rank 200 = green (0,1,0)
+                    t = (rank - 21) / 179  # 0 at rank 21, 1 at rank 200
+                    color = (1.0 - t, 1.0, 0.0)  # R goes 1->0, G=1, B=0
+                    cell.set_facecolor(color)
                 else:
-                    cell.set_facecolor((1.0, 0.9, 0.9))  # Light red for not found
+                    cell.set_facecolor((0.85, 0.85, 0.85))  # Light grey
 
-    plt.tight_layout()
+    # Add legend colorbar on the right side
+    from matplotlib.colors import LinearSegmentedColormap
+    from matplotlib.colorbar import ColorbarBase
+    from matplotlib.patches import Patch
+
+    # Create a custom colormap: red -> yellow -> green
+    colors_list = [
+        (1.0, 0.0, 0.0),  # Red (rank 1)
+        (1.0, 1.0, 0.0),  # Yellow (rank 20-21)
+        (0.0, 1.0, 0.0),  # Green (rank 200)
+    ]
+    cmap = LinearSegmentedColormap.from_list("rank_cmap", colors_list, N=256)
+
+    # Add colorbar axis on the right
+    cbar_ax = fig.add_axes((0.92, 0.3, 0.02, 0.4))  # (left, bottom, width, height)
+    cb = ColorbarBase(cbar_ax, cmap=cmap, orientation='vertical')
+    cb.set_ticks([0, 0.5, 1.0])
+    cb.set_ticklabels(['1', '20', '200'])
+    cb.ax.set_ylabel(f'Rank of "{primary_target}"', fontsize=9)
+
+    # Add grey patch for ">200" legend
+    grey_patch = Patch(facecolor=(0.85, 0.85, 0.85), edgecolor='black', label='>200 / not found')
+    fig.legend(handles=[grey_patch]
+    , loc='lower right', bbox_to_anchor=(0.98, 0.15), fontsize=8)
+
     plt.savefig(output_path, bbox_inches='tight', dpi=150)
     plt.close(fig)
 
     logger.success(f"Saved logit lens results to {output_path}")
 
 
-# %% Run experiment 1b - logit lens at all layers
-# Use higher top_k to search deeper for target substring
+# %% Run experiment 1b - tuned lens at all layers
 for i in range(len(EVAL_PROMPTS)):
-    results_all_layers = run_logit_lens_all_tokens_all_layers(lora_model, tokenizer, EVAL_PROMPTS[i], top_k=100)
-    save_logit_lens_to_pdf(results_all_layers, f"plots/owl_logit_lens_prompt_{i}.pdf", top_k=5)
+    results_all_layers = run_tuned_lens_all_tokens_all_layers(
+        lora_model, tokenizer, EVAL_PROMPTS[i], top_k=200, tuned_lens_model=tuned_lens
+    )
+    save_logit_lens_to_pdf(
+        results_all_layers,
+        f"plots/{animal}_tuned_lens_prompt_{i}.pdf",
+        target_substrings=[animal],
+    )
 
 
 # %% Experiment 2: LoRA B matrix analysis
